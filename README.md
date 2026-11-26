@@ -1,79 +1,76 @@
 # Doctor Management System
 
-A full-stack doctor appointment management platform built with the MERN stack. The project includes a patient-facing web app, an admin/doctor panel, appointment booking, online payments, video consultations, rule-based symptom triage, and in-app/email/SMS notifications.
+A full-stack healthcare appointment management platform built on the MERN stack and enhanced with **LangChain** and **Retrieval-Augmented Generation (RAG)**. The platform provides a patient-facing web portal, dedicated doctor and admin dashboards, online Razorpay payments, WebRTC video consultations, a rule-based symptom checker, an intelligent RAG-powered assistant for doctor discovery, and multi-channel notifications.
 
-## Features
+---
 
-### Patient App
+## Core Features
 
-- User registration and login with JWT authentication
-- Browse doctors by speciality
-- View doctor profile, experience, availability, fees, and address
-- Book clinic or video appointments
-- Cancel appointments when allowed
-- Razorpay payment integration
-- View appointment history and payment status
-- Join paid video consultations during the allowed appointment window
-- Rule-based symptom checker with:
-  - patient intake fields
-  - warning-sign detection
-  - care-level guidance
-  - recommended doctors
-  - downloadable assessment report
-  - recent assessment history in the browser
-- Website assistant chatbot that explains how to use the application
-- Notification bell with read/delete/clear actions
+### Patient Portal (`fronted/`)
+- **Authentication:** Secure user registration and login powered by JSON Web Tokens (JWT) and bcrypt password hashing.
+- **Doctor Discovery:** Filter and browse medical specialists, inspect detailed profiles (experience, qualifications, fees, clinic address), and view real-time slot availability.
+- **Appointment Booking:** Schedule either in-person clinic visits or remote video consultations, with support for cancellations within permitted windows.
+- **Online Payments:** Integrated **Razorpay** checkout for seamless fee processing and payment status tracking in appointment history.
+- **Video Consultations:** Join paid WebRTC video calls directly in the browser during scheduled appointment windows.
+- **Rule-Based Symptom Checker:** Structured patient intake that detects red-flag warning signs, provides care-level guidance, recommends suitable doctors, stores local assessment history, and generates downloadable reports.
+- **LangChain & RAG Assistant Chatbot:** An interactive AI assistant built with **LangChain** that guides users through platform workflows and uses **Retrieval-Augmented Generation (RAG)** to query live doctor records and provide tailored specialist recommendations.
+- **Notification Center:** Real-time in-app notification bell supporting mark-as-read, individual deletion, and bulk clear actions.
 
-### Doctor Panel
+### Doctor Dashboard (`admin/`)
+- **Appointment Management:** Dedicated doctor login to view assigned schedules and update appointment statuses (`pending`, `confirmed`, `cancelled`, `completed`).
+- **Telemedicine:** Launch and conduct scheduled video consultations with patients.
+- **Profile & Schedule Control:** Update consultation fees, clinic address, bio details, and booking availability.
 
-- Doctor login
-- View assigned appointments
-- Join video consultations
-- Update appointment status: pending, confirmed, cancelled, completed
-- Manage profile, fees, address, and availability
+### Admin Dashboard (`admin/`)
+- **Platform Oversight:** Secure administrator login to monitor all registered doctors and platform-wide appointments.
+- **Doctor Onboarding:** Add new doctors with profile imagery uploaded to Cloudinary and manage their active availability status.
 
-### Admin Panel
+### Automated Multi-Channel Notifications
+- **In-App:** Persistent notification records stored in MongoDB.
+- **Email:** Transactional emails dispatched via **Nodemailer** (SMTP).
+- **SMS:** Automated text alerts sent via **Twilio**.
+- **Event Triggers:** Covers appointment bookings, cancellations, payment confirmations, and upcoming appointment reminders.
 
-- Admin login
-- Add doctors
-- View all doctors
-- View all appointments
-- Manage doctor availability
+---
 
-### Notifications
+## Technology Stack
 
-- In-app notifications stored in MongoDB
-- Email notifications using Nodemailer
-- SMS notifications using Twilio
-- Appointment booked notification
-- Appointment cancelled notification
-- Payment confirmed notification
-- Appointment reminder notification
+| Layer | Technologies |
+| :--- | :--- |
+| **Patient Frontend** | React, Vite, Tailwind CSS |
+| **Admin / Doctor Panel** | React, Vite, Tailwind CSS |
+| **Backend API** | Node.js, Express.js |
+| **Database** | MongoDB, Mongoose |
+| **AI & RAG Pipeline** | LangChain, Retrieval-Augmented Generation (RAG), Groq API, Google Gemini API |
+| **Authentication** | JWT, bcrypt |
+| **Media & Storage** | Multer, Cloudinary |
+| **Payments** | Razorpay |
+| **Real-Time Video** | WebRTC, WebSockets (custom signaling server) |
+| **Communications** | Nodemailer, Twilio |
 
-## Tech Stack
+---
 
-- Frontend: React, Vite, Tailwind CSS
-- Admin Panel: React, Vite, Tailwind CSS
-- Backend: Node.js, Express.js
-- Database: MongoDB, Mongoose
-- Authentication: JWT, bcrypt
-- File Uploads: Multer, Cloudinary
-- Payments: Razorpay
-- Notifications: Nodemailer, Twilio
-- Video Calls: WebRTC with a custom WebSocket signaling server
-
-## Project Structure
+## Project Architecture
 
 ```text
 doctor_management/
-  backend/     Express API, MongoDB models, services, routes
-  fronted/     Patient-facing React application
-  admin/       Admin and doctor React application
+├── backend/    # Express REST API, WebSocket signaling, Mongoose models, LangChain RAG services
+├── fronted/    # Patient-facing React + Vite application
+└── admin/      # Unified Admin and Doctor React + Vite dashboard
 ```
+
+---
 
 ## Getting Started
 
-### 1. Install Dependencies
+### Prerequisites
+- **Node.js** (v18+ recommended)
+- **MongoDB** instance (local or MongoDB Atlas)
+- Active accounts/keys for **Cloudinary**, **Razorpay**, **Groq**, **Google AI Studio (Gemini)**, **SMTP**, and **Twilio**
+
+### 1. Installation
+
+Clone the repository and install dependencies across the root, backend, patient frontend, and admin panel:
 
 ```bash
 npm install
@@ -82,106 +79,113 @@ cd ../fronted && npm install
 cd ../admin && npm install
 ```
 
-### 2. Configure Environment Variables
+### 2. Environment Configuration
 
-Create or update `backend/.env`:
+#### Backend (`backend/.env`)
+Create a `.env` file inside the `backend/` directory with the following variables:
 
 ```env
+# Server & Database
 PORT=4000
 MONGODB_URL=your_mongodb_connection_string
 JWT_SECRET=your_jwt_secret
+
+# Admin Credentials
 ADMIN_EMAIL=admin@example.com
 ADMIN_PASSWORD=your_admin_password
 
+# AI & LangChain RAG Providers
+GROQ_API_KEY=your_groq_api_key
+GOOGLE_API_KEY=your_google_api_key
+
+# Cloudinary Media Storage
 CLOUDINARY_NAME=your_cloudinary_name
 CLOUDINARY_API_KEY=your_cloudinary_api_key
 CLOUDINARY_SECRET_KEY=your_cloudinary_secret_key
 
+# Razorpay Payment Gateway
 RAZORPAY_KEY_ID=your_razorpay_key_id
 RAZORPAY_KEY_SECRET=your_razorpay_key_secret
 CURRENCY=INR
 
+# Email Notifications (Nodemailer)
 SMTP_HOST=smtp.gmail.com
 SMTP_PORT=587
 SMTP_USER=your_email@gmail.com
 SMTP_PASS=your_email_app_password
 NOTIFICATION_EMAIL_FROM=your_email@gmail.com
 
+# SMS Notifications (Twilio)
 TWILIO_ACCOUNT_SID=your_twilio_account_sid
 TWILIO_AUTH_TOKEN=your_twilio_auth_token
 TWILIO_PHONE_NUMBER=your_twilio_phone_number
 ```
 
-Create or update `fronted/.env`:
+#### Patient App (`fronted/.env`)
+Create a `.env` file inside the `fronted/` directory:
 
 ```env
 VITE_BACKEND_URL=http://localhost:4000
 VITE_TEST_API_KEY=your_razorpay_public_key
 ```
 
-Create or update `admin/.env`:
+#### Admin & Doctor Panel (`admin/.env`)
+Create a `.env` file inside the `admin/` directory:
 
 ```env
 VITE_BACKEND_URL=http://localhost:4000
 ```
 
-### 3. Run the Applications
+### 3. Running Locally
 
-Backend:
+Start each service in a separate terminal window:
 
+**Start the Backend Server:**
 ```bash
 cd backend
 npm run server
 ```
 
-Patient app:
-
+**Start the Patient Application:**
 ```bash
 cd fronted
 npm run dev
 ```
 
-Admin/doctor panel:
-
+**Start the Admin / Doctor Dashboard:**
 ```bash
 cd admin
 npm run dev
 ```
 
-Default local URLs:
+#### Default Local Endpoints
+- **Backend API:** `http://localhost:4000`
+- **Patient Portal:** `http://localhost:5173`
+- **Admin / Doctor Panel:** `http://localhost:5174`
 
-```text
-Backend API:     http://localhost:4000
-Patient App:     http://localhost:5173
-Admin Panel:     http://localhost:5174
-```
+---
 
-## Important Notes
+## Available Scripts
 
-- Video calls require camera and microphone browser permissions.
-- Video calls are available only for video appointments after payment and within the configured appointment window.
-- Email notifications require valid SMTP credentials.
-- SMS notifications require valid Twilio credentials and phone numbers in international format.
-- The symptom checker is rule-based and informational only. It is not a medical diagnosis or emergency service.
+| Directory | Command | Description |
+| :--- | :--- | :--- |
+| `backend/` | `npm start` | Runs the production Node.js server |
+| `backend/` | `npm run server` | Runs the backend server in development mode |
+| `fronted/` & `admin/` | `npm run dev` | Starts the Vite development server |
+| `fronted/` & `admin/` | `npm run build` | Bundles the application for production |
+| `fronted/` & `admin/` | `npm run preview` | Previews the production build locally |
+| `fronted/` & `admin/` | `npm run lint` | Runs ESLint across the codebase |
 
-## Useful Scripts
+---
 
-Backend:
+## Operational Notes
 
-```bash
-npm start
-npm run server
-```
+- **AI Assistant & Medical Disclaimer:** The chatbot leverages LangChain and RAG to retrieve relevant doctor data and generate suggestions, while the symptom checker uses deterministic rules. Neither feature constitutes a medical diagnosis or emergency service; always verify doctor availability directly before booking.
+- **Video Consultations:** Browser permissions for both camera and microphone are required. Video rooms unlock strictly for paid video appointments within their designated time windows.
+- **Notification Delivery:** Ensure SMTP app passwords are valid for email delivery and Twilio recipient phone numbers follow international E.164 formatting (e.g., `+91XXXXXXXXXX`).
 
-Frontend and admin:
-
-```bash
-npm run dev
-npm run build
-npm run preview
-npm run lint
-```
+---
 
 ## License
 
-ISC
+This project is licensed under the **ISC** License.
