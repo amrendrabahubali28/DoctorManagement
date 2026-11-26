@@ -1,166 +1,101 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
-import {
-  Bot,
-  ChevronDown,
-  HelpCircle,
-  MessageCircle,
-  Send,
-  Sparkles,
-  X,
-} from "lucide-react";
+import React, { useEffect, useRef, useState } from "react";
+import { Bot, HelpCircle, MessageCircle, Send, Sparkles, X } from "lucide-react";
 
-const starterMessages = [
-  {
-    role: "assistant",
-    text: "Hi, I can explain how to use this doctor appointment website. Ask about booking, doctors, AI disease prediction, profile, appointments, or video calls.",
-  },
-];
-
-const quickQuestions = [
-  "How do I book a doctor?",
-  "What does AI Doctor do?",
-  "How do I see my appointments?",
-  "How do I update my profile?",
-];
-
-const websiteTopics = [
-  {
-    keywords: ["book", "appointment", "slot", "schedule", "consult"],
-    route: "/doctors",
-    label: "Find Doctors",
-    answer:
-      "To book an appointment, open All Doctors, choose a doctor or speciality, pick an available date and time, then confirm the booking from the appointment page.",
-  },
-  {
-    keywords: ["doctor", "speciality", "specialist", "find", "search"],
-    route: "/doctors",
-    label: "All Doctors",
-    answer:
-      "The All Doctors page lists doctors by speciality. You can open a doctor profile to check experience, fees, availability, and then continue to booking.",
-  },
-  {
-    keywords: ["ai", "predict", "disease", "symptom", "medicine", "triage"],
-    route: "/predict",
-    label: "AI Doctor",
-    answer:
-      "AI Doctor lets you enter symptoms, warning signs, duration, severity, and patient details. It gives a triage-level disease prediction, care level, supportive guidance, and matching doctors.",
-  },
-  {
-    keywords: ["login", "register", "account", "sign", "create"],
-    route: "/login",
-    label: "Login",
-    answer:
-      "Create an account or log in before booking. After login, the website can save your profile and show your appointment history.",
-  },
-  {
-    keywords: ["profile", "name", "phone", "address", "gender", "dob", "update"],
-    route: "/my-profile",
-    label: "My Profile",
-    answer:
-      "Use My Profile to update your personal information such as name, phone, address, gender, date of birth, and profile image.",
-  },
-  {
-    keywords: ["my appointment", "appointments", "cancel", "history", "status"],
-    route: "/my-appointments",
-    label: "My Appointments",
-    answer:
-      "My Appointments shows your booked consultations. From there you can review appointment details, payment status, cancellation options, and video call access when available.",
-  },
-  {
-    keywords: ["video", "call", "online", "meeting", "telemedicine"],
-    route: "/my-appointments",
-    label: "Appointments",
-    answer:
-      "Video calls are opened from My Appointments when an appointment has an active video meeting. Join from the appointment row at the scheduled time.",
-  },
-  {
-    keywords: ["payment", "pay", "fees", "razorpay", "stripe", "price"],
-    route: "/my-appointments",
-    label: "Payments",
-    answer:
-      "Doctor fees are shown before booking. Payment actions and payment status are available from the appointment flow and My Appointments page.",
-  },
-  {
-    keywords: ["contact", "support", "help", "clinic", "address"],
-    route: "/contact",
-    label: "Contact",
-    answer:
-      "Use Contact for clinic information and support. If symptoms are severe or worsening, contact emergency medical services instead of waiting for a website response.",
-  },
-  {
-    keywords: ["about", "website", "function", "feature", "what can"],
-    route: "/about",
-    label: "About",
-    answer:
-      "This website helps patients browse doctors, book appointments, manage profile details, track appointments, use AI symptom triage, and join online consultations when available.",
-  },
-];
-
-const fallbackAnswer =
-  "I can help with website features: booking doctors, AI disease prediction, login, profile, appointments, payments, video calls, and contact details. Try asking, 'How do I book an appointment?'";
-
-const getBotReply = (message) => {
-  const lowerMessage = message.toLowerCase();
-  const topic = websiteTopics.find((item) =>
-    item.keywords.some((keyword) => lowerMessage.includes(keyword))
-  );
-
-  return topic || { answer: fallbackAnswer };
+const STARTER = {
+  role: "assistant",
+  text:
+    "Hi, I can help you find the right doctor. Tell me your symptoms, what kind of specialist you need, or ask about fees, slots, or availability.",
 };
+
+const QUICK_QUESTIONS = [
+  "I have had a fever for 3 days",
+  "My child has a skin rash",
+  "I need a cheap general physician",
+  "Who can I see for a bad headache?",
+];
+
+const MAX_HISTORY = 15; // sent to backend
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL;
 
 export default function WebsiteChatbot() {
   const [open, setOpen] = useState(false);
   const [input, setInput] = useState("");
-  const [messages, setMessages] = useState(starterMessages);
+  const [messages, setMessages] = useState([STARTER]);
+  const [loading, setLoading] = useState(false);
   const chatEndRef = useRef(null);
-  const navigate = useNavigate();
-
-  const lastSuggestedRoute = useMemo(() => {
-    const lastAssistant = [...messages]
-      .reverse()
-      .find((message) => message.role === "assistant" && message.route);
-
-    return lastAssistant;
-  }, [messages]);
 
   useEffect(() => {
     if (open) {
       chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }
-  }, [messages, open]);
+  }, [messages, open, loading]);
 
-  const sendMessage = (text = input) => {
-    const finalText = text.trim();
-    if (!finalText) return;
-
-    const reply = getBotReply(finalText);
-
-    setMessages((prev) => [
-      ...prev,
-      { role: "user", text: finalText },
-      {
-        role: "assistant",
-        text: reply.answer,
-        route: reply.route,
-        label: reply.label,
-      },
-    ]);
-    setInput("");
-    setOpen(true);
+  const buildHistory = (allMessages) => {
+    // Drop the starter greeting so the model doesn't see itself as the first turn.
+    const real = allMessages
+      .filter((m) => !m.isStarter)
+      .map((m) => ({ role: m.role, content: m.text }));
+    return real.slice(-MAX_HISTORY);
   };
 
-  const handleKeyDown = (event) => {
-    if (event.key === "Enter" && !event.shiftKey) {
-      event.preventDefault();
-      sendMessage();
+  const sendMessage = async (text = input) => {
+    const question = text.trim();
+    if (!question || loading) return;
+
+    const userMsg = { role: "user", text: question };
+    const history = buildHistory(messages); // BEFORE pushing the new user msg
+
+    setMessages((prev) => [...prev, userMsg]);
+    setInput("");
+    setOpen(true);
+    setLoading(true);
+
+    try {
+      if (!BACKEND_URL) {
+        throw new Error("VITE_BACKEND_URL is not configured.");
+      }
+
+      const res = await fetch(`${BACKEND_URL}/api/ai/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ question, history }),
+      });
+
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok || !data.success) {
+        throw new Error(data?.message || `Request failed (${res.status})`);
+      }
+
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          text: data.answer,
+          doctors: Array.isArray(data.doctors) ? data.doctors : [],
+        },
+      ]);
+    } catch (err) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          text:
+            err?.message ||
+            "Sorry, I couldn't reach the assistant. Please try again.",
+          isError: true,
+        },
+      ]);
+    } finally {
+      setLoading(false);
     }
   };
 
-  const goToRoute = (route) => {
-    navigate(route);
-    setOpen(false);
-    window.scrollTo({ top: 0, behavior: "smooth" });
+  const handleKeyDown = (e) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
+    }
   };
 
   return (
@@ -173,11 +108,10 @@ export default function WebsiteChatbot() {
                 <Bot className="h-5 w-5" />
               </div>
               <div>
-                <p className="text-sm font-semibold">Website Assistant</p>
-                <p className="text-xs text-slate-300">Feature guide</p>
+                <p className="text-sm font-semibold">Doctor Assistant</p>
+                <p className="text-xs text-slate-300">Find the right doctor</p>
               </div>
             </div>
-
             <button
               onClick={() => setOpen(false)}
               className="flex h-9 w-9 items-center justify-center rounded-xl text-slate-200 transition hover:bg-white/10"
@@ -189,46 +123,64 @@ export default function WebsiteChatbot() {
 
           <div className="max-h-80 overflow-y-auto px-4 py-4">
             <div className="space-y-3">
-              {messages.map((message, index) => (
+              {messages.map((m, i) => (
                 <div
-                  key={`${message.role}-${index}`}
+                  key={`${m.role}-${i}`}
                   className={`flex ${
-                    message.role === "user" ? "justify-end" : "justify-start"
+                    m.role === "user" ? "justify-end" : "justify-start"
                   }`}
                 >
                   <div
-                    className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm leading-6 ${
-                      message.role === "user"
+                    className={`max-w-[85%] whitespace-pre-wrap rounded-2xl px-3 py-2 text-sm leading-6 ${
+                      m.role === "user"
                         ? "rounded-tr-md bg-indigo-600 text-white"
+                        : m.isError
+                        ? "rounded-tl-md bg-rose-50 text-rose-700"
                         : "rounded-tl-md bg-slate-100 text-slate-700"
                     }`}
                   >
-                    {message.text}
-                    {message.route && (
-                      <button
-                        onClick={() => goToRoute(message.route)}
-                        className="mt-2 inline-flex items-center gap-2 rounded-xl bg-white px-3 py-1.5 text-xs font-semibold text-slate-900 shadow-sm transition hover:bg-slate-50"
-                      >
-                        {message.label}
-                        <ChevronDown className="h-3 w-3 -rotate-90" />
-                      </button>
+                    {m.text}
+
+                    {Array.isArray(m.doctors) && m.doctors.length > 0 && (
+                      <div className="mt-2 space-y-1 border-t border-slate-200 pt-2 text-xs text-slate-600">
+                        <p className="font-semibold text-slate-700">
+                          Matched doctors
+                        </p>
+                        {m.doctors.slice(0, 5).map((d) => (
+                          <p key={d._id} className="truncate">
+                            •{" "}
+                            {d.summary?.split("\n")[0]?.replace(/^Name:\s*/i, "") ||
+                              d._id}
+                          </p>
+                        ))}
+                      </div>
                     )}
                   </div>
                 </div>
               ))}
+
+              {loading && (
+                <div className="flex justify-start">
+                  <div className="rounded-2xl rounded-tl-md bg-slate-100 px-3 py-2 text-sm text-slate-500">
+                    Thinking…
+                  </div>
+                </div>
+              )}
+
               <div ref={chatEndRef} />
             </div>
           </div>
 
           <div className="border-t border-slate-100 px-4 py-3">
             <div className="mb-3 flex flex-wrap gap-2">
-              {quickQuestions.map((question) => (
+              {QUICK_QUESTIONS.map((q) => (
                 <button
-                  key={question}
-                  onClick={() => sendMessage(question)}
-                  className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-600 transition hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-700"
+                  key={q}
+                  onClick={() => sendMessage(q)}
+                  disabled={loading}
+                  className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-600 transition hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-700 disabled:opacity-50"
                 >
-                  {question}
+                  {q}
                 </button>
               ))}
             </div>
@@ -237,29 +189,20 @@ export default function WebsiteChatbot() {
               <textarea
                 rows={2}
                 value={input}
-                onChange={(event) => setInput(event.target.value)}
+                onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder="Ask how this website works..."
+                placeholder="Describe your symptoms or ask a question…"
                 className="w-full resize-none rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-700 outline-none transition focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100"
               />
               <button
                 onClick={() => sendMessage()}
-                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-indigo-600 text-white transition hover:bg-indigo-700"
+                disabled={loading}
+                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-indigo-600 text-white transition hover:bg-indigo-700 disabled:opacity-50"
                 title="Send message"
               >
                 <Send className="h-4 w-4" />
               </button>
             </div>
-
-            {lastSuggestedRoute && (
-              <button
-                onClick={() => goToRoute(lastSuggestedRoute.route)}
-                className="mt-3 inline-flex items-center gap-2 text-xs font-semibold text-indigo-600 hover:text-indigo-700"
-              >
-                Open {lastSuggestedRoute.label}
-                <ChevronDown className="h-3 w-3 -rotate-90" />
-              </button>
-            )}
           </div>
         </div>
       )}
@@ -268,21 +211,17 @@ export default function WebsiteChatbot() {
         <div className="mb-3 hidden max-w-xs rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600 shadow-lg sm:block">
           <div className="flex items-start gap-2">
             <HelpCircle className="mt-0.5 h-4 w-4 shrink-0 text-indigo-600" />
-            <span>Need help using the website?</span>
+            <span>Need help finding a doctor?</span>
           </div>
         </div>
       )}
 
       <button
-        onClick={() => setOpen((prev) => !prev)}
+        onClick={() => setOpen((p) => !p)}
         className="ml-auto flex h-14 w-14 items-center justify-center rounded-full bg-indigo-600 text-white shadow-xl shadow-indigo-600/30 transition hover:-translate-y-0.5 hover:bg-indigo-700"
-        title="Open website assistant"
+        title="Open doctor assistant"
       >
-        {open ? (
-          <X className="h-6 w-6" />
-        ) : (
-          <MessageCircle className="h-6 w-6" />
-        )}
+        {open ? <X className="h-6 w-6" /> : <MessageCircle className="h-6 w-6" />}
       </button>
 
       {!open && (

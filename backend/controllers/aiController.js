@@ -1,124 +1,80 @@
+// controllers/aiController.js
 import doctorModel from "../models/doctor.js";
-import { getSpecialityForDisease, predictDisease } from "../services/diseasePredictor.js";
+import { DoctorStore } from "../services/DoctorStore.js";
+import { createDoctorRagChain } from "../services/doctorRag.js";
 
-const specialityPriority = {
-  "Possible Cancer Warning Signs": ["General physician"],
-  "Migraine or Severe Headache": ["Neurologist", "General physician"],
-  "Gastritis or Food Poisoning": ["Gastroenterologist", "General physician"],
-  "Allergic Reaction": ["Dermatologist", "General physician"],
-  "Respiratory Infection": ["General physician"],
-  "Viral Fever": ["General physician"],
-  "Common Cold": ["General physician"],
-  "Body Pain or Muscle Strain": ["General physician"],
-};
+/**
+ * Lazily-built singleton chain. Building the DoctorStore on every request
+ * is wasteful (it re-embeds + rebuilds the FAISS index), so we cache it.
+ *
+ * If you want the index to reflect DB changes, add a TTL or an admin
+ * endpoint that calls `resetChain()`.
+ */
+let chainPromise = null;
 
-const getDoctorRecommendations = async (disease) => {
-  const targetSpecialities = specialityPriority[disease] || [
-    getSpecialityForDisease(disease),
-    "General physician",
-  ];
-
-  const specialityRegex = targetSpecialities.map(
-    (speciality) => new RegExp(`^${speciality.trim()}$`, "i")
-  );
-
-  let doctors = await doctorModel
-    .find({
-      speciality: { $in: specialityRegex },
-      available: true,
-    })
-    .select("-password -email")
-    .sort({ available: -1, speciality: 1, experience: -1 })
-    .limit(6);
-
-  if (doctors.length === 0 && !targetSpecialities.includes("General physician")) {
-    doctors = await doctorModel
-      .find({
-        speciality: /^General physician$/i,
-        available: true,
-      })
-      .select("-password -email")
-      .sort({ available: -1, experience: -1 })
-      .limit(6);
+async function getChain() {
+  if (!chainPromise) {
+    chainPromise = (async () => {
+      const doctors = await doctorModel.find().lean();
+      const doctorStore = await DoctorStore.create(
+        doctors,
+        "./data/doctor-index"
+      );
+      return createDoctorRagChain(doctorStore, {
+        k: 5,
+        maxHistory: 15,
+        temperature: 0.3,
+      });
+    })().catch((err) => {
+      // Reset so the next request retries instead of caching the failure.
+      chainPromise = null;
+      throw err;
+    });
   }
+  return chainPromise;
+}
 
-  if (doctors.length === 0) {
-    doctors = await doctorModel
-      .find({
-        speciality: { $in: specialityRegex },
-      })
-      .select("-password -email")
-      .sort({ available: -1, speciality: 1, experience: -1 })
-      .limit(6);
-  }
+export function resetChain() {
+  chainPromise = null;
+}
 
-  return {
-    targetSpecialities,
-    doctors,
-  };
-};
-
-export const predictDiseaseController = (req, res) => {
+/**
+ * POST /api/ai/chat
+ * Body: { question: string, history?: Array<{ role, content }> }
+ * Response: { success: true, answer: string, doctors: [...] }
+ */
+export const chatController = async (req, res) => {
   try {
-    const { symptoms } = req.body;
+    const { question, history } = req.body ?? {};
 
-    if (!symptoms || !symptoms.trim()) {
+    if (typeof question !== "string" || !question.trim()) {
       return res.status(400).json({
         success: false,
-        message: "Please enter symptoms for prediction.",
+        message: "A non-empty 'question' string is required.",
       });
     }
 
-    const prediction = predictDisease(symptoms);
+    // Cap history server-side too — never trust the client to send only 15.
+    const safeHistory = Array.isArray(history) ? history.slice(-15) : [];
 
-    if (!prediction) {
-      return res.status(400).json({
-        success: false,
-        message: "Please provide more symptom details.",
-      });
-    }
+    const chain = await getChain();
+    const { answer, doctors } = await chain.invoke({
+      question: question.trim(),
+      history: safeHistory,
+    });
 
     return res.json({
       success: true,
-      ...prediction,
-      disclaimer:
-        "This rule-based result is for information only. It is not a diagnosis, prescription, or emergency service.",
-    });
-  } catch (error) {
-    return res.status(500).json({
-      success: false,
-      message: error.message,
-    });
-  }
-};
-
-export const recommendDoctorsController = async (req, res) => {
-  try {
-    const { disease } = req.body;
-
-    if (!disease) {
-      return res.status(400).json({
-        success: false,
-        message: "Disease is required for doctor recommendation.",
-      });
-    }
-
-    const { targetSpecialities, doctors } = await getDoctorRecommendations(disease);
-
-    return res.json({
-      success: true,
-      speciality: targetSpecialities[0],
-      targetSpecialities,
+      answer,
       doctors,
-      message:
-        doctors.length > 0
-          ? "Doctors matched by predicted condition and speciality."
-          : "No available matching doctors found. Please contact the clinic directly or try another speciality.",
+      disclaimer:
+        "This assistant is not a medical diagnosis. Consult the doctor for medical advice.",
     });
   } catch (error) {
+    console.error("[aiController.chat] error:", error);
     return res.status(500).json({
       success: false,
-      message: error.message,
+      message: error?.message ?? "Failed to generate a response.",
     });
   }
 };
